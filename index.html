@@ -1,0 +1,415 @@
+<html>
+<head>
+
+<script src="https://unpkg.com/react@16/umd/react.development.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@16/umd/react-dom.development.js" crossorigin></script>
+<script src="https://unpkg.com/babel-standalone@6/babel.min.js"></script>
+
+<link rel="stylesheet" type="text/css" href="cards.css" />
+
+<style type="text/css">
+#deck {
+	display: inline-block;
+	width: 20%;
+}
+
+#dealer {
+	display: inline-block;
+	width: 80%;
+	heigth: 100%;
+}
+
+#controller {
+	display: inline-block;
+	width: 20%;
+}
+
+#player {
+	display: inline-block;
+	width: 80%
+}
+</style>
+
+</head>
+
+<body>
+<div id="app"></div>
+<script type="text/babel">
+
+function Card(props) {
+	const charCodes = {
+		"spades": 9824,
+		"clubs": 9827,
+		"hearts": 9829,
+		"diams": 9830
+	},
+	rank = String(props.rank),
+	suit = props.suit,
+	displayBack = props.displayBack;
+	
+	if (displayBack) {
+		return <div className="card back">*</div>;
+	}
+			
+	return (
+		<div className={"card rank-" + rank + " " + suit}>
+			<span className="rank">{rank.toUpperCase()}</span>
+			<span className="suit">{String.fromCharCode(charCodes[suit])}</span>
+		</div>
+	);
+}
+
+function Deck(props) {
+	const cards = props.cards;
+	const elements = cards.map((e, index) => (
+		<li key={index}>
+			<Card displayBack={true}/>
+		</li>
+	));
+
+	return (
+		<div id="deck">
+			<ul className="deck">{elements}</ul>
+		</div>
+	);
+}
+
+function Outcome(props) {
+	if (props.message === '') {
+		return null;
+	}
+
+	return (
+		<p>
+		{props.message}
+		</p>
+	);
+}
+
+class Dealer extends React.Component {
+	render() {
+		const cards = this.props.cards;
+		const elements = cards.map((c, index) => {	
+		
+			return (
+			<li key={index}>
+				<Card rank={c.rank} suit={c.suit} displayBack={index === 0 && !this.props.isTurnOver}/>
+			</li>
+			);
+		});
+		
+		return (
+			<div id="dealer">
+				<ul className="table">{elements}</ul>	
+			</div>
+		);
+	}
+}
+
+class Controller extends React.Component {
+	constructor(props) {
+		super(props);
+		
+		this.handleChange = this.handleChange.bind(this);
+	}
+	
+	handleChange(e) {
+		this.props.changeBetAmount(e.target.value);
+	}
+	
+	render() {
+		return (
+			<div id="controller">
+				{
+				!this.props.isTurnOver ? (
+					<div>
+						<button onClick={this.props.onHit}>Hit</button>
+						<button onClick={this.props.onStay}>Stay</button>
+						<button onClick={this.props.onDouble}>Double</button>
+					</div>
+					) : <button onClick={this.props.dealDeck} disabled={this.props.betAmount === 0}>Deal Cards</button>	
+				}
+				<div>
+					<p>Current points: {this.props.points}</p>
+					<label>Bet Amount: </label>
+					<input value={this.props.betAmount} onChange={this.handleChange} disabled={!this.props.isTurnOver}/>
+				</div>
+			</div>
+		);
+	}
+}
+
+class Player extends React.Component {	
+	render() {
+		const cards = this.props.cards;
+		const elements = cards.map((c, index) => (
+			<li key={index}>
+				<Card rank={c.rank} suit={c.suit} />
+			</li>
+		));
+
+		return (
+			<div id="player">
+				<ul className="table">{elements}</ul>	
+			</div>
+		);
+	}
+}
+
+class App extends React.Component {
+	constructor(props) {
+		super(props);
+		this.state = {
+			drawDeck: cards,
+			discardDeck: [],
+			dealer: {
+				cards: [],
+				hideCard: true
+			},
+			player: {
+				cards: [],
+				points: 1000,
+				betAmount: 0
+			},
+			isTurnOver: true,
+			outcomeMessage: ''
+		};
+		
+		this.playerDraws = this.playerDraws.bind(this);
+		this.playerStays = this.playerStays.bind(this);
+		this.playerDoubles = this.playerDoubles.bind(this);
+		this.changeBetAmount = this.changeBetAmount.bind(this);
+		this.dealDeck = this.dealDeck.bind(this);
+	}
+	
+	drawCard(deck) {
+		let index,
+			card;
+		
+		index = randomInteger(deck.length - 1);
+		card = deck.splice(index, 1)[0];
+		
+		//if the last card was drawn reshuffle the deck
+		if (deck.length === 0) {
+			this.reshuffle();
+		}
+		
+		return card;
+	}
+	
+	reshuffle() {
+		this.state.drawDeck = this.state.discardDeck;
+		this.state.discardDeck = [];
+	}
+	
+	addCardTo(holder, card) {
+		holder.cards.push(card);
+	}
+	
+	hitDeck(holder) {
+		let deck = this.state.drawDeck,
+			index,
+			card;
+		
+		card = this.drawCard(deck);
+		this.addCardTo(holder, card);
+	}
+	
+	//this is a onclick function so an event we don't use is still the 1st parameter
+	playerDraws(e, playerDoubleDowned) {
+		let player = this.state.player;
+
+		this.hitDeck(player);
+		
+		if (sumOfCards(player.cards) > 21) {
+			this.state.isTurnOver = true;
+			this.finishOutcome("Player busted with " + sumOfCards(player.cards) + ". Dealer wins!", 0);
+		} else if (sumOfCards(player.cards) === 21 || playerDoubleDowned) {
+			this.playerStays();
+		} else {
+			this.setState({player: player});
+		}
+	}
+	
+
+	playerStays() {
+		this.state.isTurnOver = true;
+		this.dealerPlays();
+	}
+	
+	playerDoubles() {
+		this.state.player.betAmount *= 2;
+		this.playerDraws(null, true);
+	}
+	
+	dealDeck() {
+		let discardDeck = this.state.discardDeck,
+			dealer = this.state.dealer,
+			player = this.state.player;
+		
+		//move cards into discard and reset state for new round
+		discardDeck = discardDeck.concat(dealer.cards);
+		discardDeck = discardDeck.concat(player.cards);
+		this.state.discardDeck = discardDeck;
+		this.state.outcomeMessage = '';
+		dealer.cards = [];
+		player.cards = [];
+		this.state.isTurnOver = false;
+	
+		this.hitDeck(player);
+		this.hitDeck(player);
+		
+		//if player hits blackjack, dealer won't draw
+		if (sumOfCards(player.cards) === 21) {
+			this.state.isTurnOver = true;
+			this.finishOutcome("Player wins with Blackjack.", 1);
+		} else {
+			this.hitDeck(dealer);
+			this.hitDeck(dealer);	
+		}
+		
+		this.setState(this.state);
+	}
+	
+	dealerPlays() {
+		let dealer = this.state.dealer,
+			cardSum;
+		
+		while(sumOfCards(dealer.cards) <= 16) {
+			this.hitDeck(dealer);
+		}
+		
+		cardSum = sumOfCards(dealer.cards);
+		this.setState({dealer: dealer});
+
+		if (cardSum > 21) {
+			this.finishOutcome("Dealer busted with " + cardSum + ". Player wins!", 1);
+		} else if (cardSum === 21 && dealer.cards.length === 2) {
+			this.finishOutcome("Dealer wins with Blackjack.", 0);
+		} else {
+			this.calculateWinner();
+		}
+	}
+	
+	calculateWinner() {
+		let playerTotal = sumOfCards(this.state.player.cards),
+			dealerTotal = sumOfCards(this.state.dealer.cards),
+			message = '',
+			playerWon;
+			
+		if (playerTotal > dealerTotal) {
+			message = "Player (" + playerTotal + ") beats Dealer (" + dealerTotal + ").";
+			playerWon = 1;		
+		} else if (dealerTotal > playerTotal) {
+			message = "Dealer (" + dealerTotal + ") beats Player (" + playerTotal + ").";
+			playerWon = 0;
+		} else {
+			message = "Dealer (" + dealerTotal + ") draws with Player (" + playerTotal + ").";
+			playerWon = 2;
+		}
+		
+		this.finishOutcome(message, playerWon);
+	}
+	
+	finishOutcome(message, didPlayerWin) {
+		//didPlayerWin values: lose = 0, win = 1, draw = 2
+		let player = this.state.player;
+		this.state.outcomeMessage = message;
+		
+		if (didPlayerWin === 0) {
+			player.points -= player.betAmount;
+		} else if (didPlayerWin === 1) {
+			player.points += player.betAmount;
+		} else {
+			player.points -= (player.betAmount / 2);
+		}
+		
+		player.betAmount = 0;
+
+		this.setState({player: player, outcomeMessage: message, isTurnOver: true});
+	}
+	
+	changeBetAmount(value) {
+		let player = this.state.player;
+		
+		if (value === '') {//occurs when backspacing to empty
+			player.betAmount = 0;
+		} else {
+			value = parseFloat(value);
+			if (isNaN(value) || value < minBet || value > maxBet || value > player.points) {
+				return;
+			}
+			player.betAmount = value;
+		}
+		
+		this.setState({player: player});
+	}
+
+	render() {
+		const player = this.state.player;
+		return (
+		<div className="playingCards simpleCards">
+			<div id="dealerTable">
+				<Deck cards={this.state.drawDeck} />
+				<Dealer cards={this.state.dealer.cards} isTurnOver={this.state.isTurnOver} />
+			</div>
+			<div id="playerArea">
+				<Controller onHit={this.playerDraws} 
+							onStay={this.playerStays}
+							onDouble={this.playerDoubles}
+							dealDeck={this.dealDeck}
+							isTurnOver={this.state.isTurnOver}
+							points={player.points}
+							betAmount={player.betAmount}
+							changeBetAmount={this.changeBetAmount}
+				/>
+				<Player cards={player.cards} />
+				<Outcome message={this.state.outcomeMessage} />
+			</div>
+		</div>
+		);
+	}
+}
+
+function sumOfCards(cards) {
+	var total = 0,
+		cardValues;
+		
+	//map cards to numbers
+	//sort values
+	//change 11s to 1s if necessary
+	cardValues = cards.map(c => !isNaN(c.rank) ? c.rank : (c.rank === "a" ? 11 : 10));
+	cardValues.sort((a, b) => a - b);
+	
+	total = cardValues.reduce((sum, num) => {
+		if (sum >= 11 && num === 11) {
+			num = 1;
+		}
+		return sum + num;
+	}, 0);
+	
+	return total;
+}
+
+function randomInteger(length) {
+	return Math.floor(Math.random() * length);
+}
+
+var ranks = [2, 3, 4, 5, 6, 7, 8, 9, 10, "j", "q", "k", "a"],
+	suits = ["spades", "clubs", "hearts", "diams"],
+	cards = [],
+	minBet = 1,
+	maxBet = 100;
+	
+ranks.forEach(function(r) {
+	suits.forEach(function(s) {
+		cards.push({rank: r, suit: s});
+	});
+});
+
+ReactDOM.render(<App />, document.getElementById('app'));	
+
+</script>
+</body>
+
+</html>
