@@ -1,4 +1,4 @@
-# chess
+# Simple Blackjack
 Simple blackjack game with one player vs dealer written using React.
 
 cards.css is from https://github.com/selfthinker/CSS-Playing-Cards
